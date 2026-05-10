@@ -19,13 +19,13 @@ logger = logging.getLogger("main")
 
 # Sample viral tweet used in test mode — bypasses scraper entirely
 TEST_TWEET = {
-    "text": "If you found bitcoin in 2012 you are a millionaire.\n\nIf you found Tesla in 2018 you are a millionaire\n\nIf you found Nvidia in 2022 you are a millionaire\n\nIf you found Palantir in 2023 you are a millionaire\n\nIf you found Sandisk in 2025 you are a millionaire",
-    "author": "DekmarTrades",
-    "url": "https://x.com/DekmarTrades/status/2053139246253289531",
-    "tweet_id": "2053139246253289531",
-    "likes": 0,
-    "views": 0,
-    "retweets": 0,
+    "text": "how do they even install these in the middle of the freaking ocean..",
+    "author": "AMAZlNGNATURE",
+    "url": "https://x.com/AMAZlNGNATURE/status/1967823367903277258",
+    "tweet_id": "1967823367903277258",
+    "likes": 4700,
+    "views": 58000000,
+    "retweets": 24000,
     "replies": 0,
     "engagement_score": 999999,
 }
