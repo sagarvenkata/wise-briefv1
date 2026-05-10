@@ -64,15 +64,21 @@ def _log(theme_id: int, viral_tweet: dict, tweet_id: str, status: str, error: st
 
 def post(theme: dict, viral_tweet: dict, content: dict):
     """
-    Quote tweet the original viral tweet with the hook,
+    Post hook tweet as standalone with source attribution,
     then reply with expansion + sources.
     """
     client = _twitter()
-    quote_id = viral_tweet.get("tweet_id") or viral_tweet["url"].split("/")[-1]
 
-    # Tweet 1: hook as a quote tweet of the original
-    logger.info(f"Posting hook as quote tweet of {quote_id} ...")
-    hook_id = _post_with_retry(client, content["hook"], quote_tweet_id=quote_id)
+    # Append source attribution to hook
+    author = viral_tweet.get("author", "")
+    hook_text = content["hook"]
+    attribution = f"\n\nVia @{author}"
+    if len(hook_text) + len(attribution) <= 280:
+        hook_text = hook_text + attribution
+
+    # Tweet 1: hook as standalone tweet
+    logger.info("Posting hook tweet ...")
+    hook_id = _post_with_retry(client, hook_text)
     logger.info(f"Hook posted: {hook_id}")
 
     # Tweet 2: expansion as reply to hook
