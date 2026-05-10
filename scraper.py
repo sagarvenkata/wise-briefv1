@@ -1,8 +1,13 @@
 import os
+import time
 import logging
+from datetime import datetime, timezone
+import tweepy
 from supabase import create_client
 
 logger = logging.getLogger(__name__)
+
+MAX_TWEETS_PER_ACCOUNT = 5
 
 
 def get_db():
@@ -15,7 +20,6 @@ def get_theme_for_slot(hour_utc: int) -> dict:
     db = get_db()
     result = db.table("themes").select("*").eq("post_hour_utc", hour_utc).eq("active", True).execute()
     if not result.data:
-        # Round down to nearest scheduled hour (even hours 0,2,4...22)
         nearest = (hour_utc // 2) * 2
         logger.info(f"No theme for hour {hour_utc}, falling back to hour {nearest}")
         result = db.table("themes").select("*").eq("post_hour_utc", nearest).eq("active", True).execute()
@@ -25,81 +29,92 @@ def get_theme_for_slot(hour_utc: int) -> dict:
 
 
 def get_accounts_for_theme(theme_id: int) -> list[str]:
-    """Return list of twitter handles for a theme."""
     db = get_db()
     result = db.table("theme_accounts").select("twitter_handle").eq("theme_id", theme_id).execute()
     return [row["twitter_handle"] for row in result.data]
 
 
+def _twitter_client() -> tweepy.Client:
+    return tweepy.Client(
+        consumer_key=os.environ["TWITTER_API_KEY"],
+        consumer_secret=os.environ["TWITTER_API_SECRET"],
+        access_token=os.environ["TWITTER_ACCESS_TOKEN"],
+        access_token_secret=os.environ["TWITTER_ACCESS_SECRET"],
+        wait_on_rate_limit=True,
+    )
+
+
 def scrape_tweets_for_accounts(handles: list[str]) -> list[dict]:
-    """Use Apify Twitter scraper to fetch recent tweets from all 20 accounts."""
-    from apify_client import ApifyClient
-    client = ApifyClient(os.environ["APIFY_API_TOKEN"])
+    """Fetch recent tweets from all accounts using Twitter API v2."""
+    client = _twitter_client()
+    tweets = []
 
-    logger.info(f"Scraping tweets from {len(handles)} accounts via Apify ...")
-
-    start_urls = [{"url": f"https://twitter.com/{h}"} for h in handles]
-
+    # Batch resolve all usernames to user IDs in one call
+    logger.info(f"Resolving {len(handles)} user IDs ...")
     try:
-        run = client.actor("apify/twitter-scraper").call(
-            run_input={
-                "startUrls": start_urls,
-                "maxItems": 5,
-                "addUserInfo": True,
-            }
-        )
-        items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+        response = client.get_users(usernames=handles, user_fields=["id", "username"])
+        users = response.data or []
     except Exception as e:
-        logger.error(f"Apify Twitter scraper failed: {e}")
+        logger.error(f"Failed to resolve user IDs: {e}")
         return []
 
-    tweets = []
-    for item in items:
-        likes    = item.get("likeCount", 0) or item.get("favorite_count", 0) or 0
-        views    = item.get("viewCount", 0) or 0
-        retweets = item.get("retweetCount", 0) or item.get("retweet_count", 0) or 0
-        replies  = item.get("replyCount", 0) or item.get("reply_count", 0) or 0
-        engagement = likes + (views // 100) + (retweets * 3) + (replies * 2)
+    logger.info(f"Resolved {len(users)} users. Fetching timelines ...")
 
-        author = (item.get("author", {}) or {}).get("userName", "") or item.get("user", {}).get("screen_name", "")
-        text   = item.get("text", "") or item.get("full_text", "")
-        url    = item.get("url", f"https://twitter.com/{author}/status/{item.get('id', '')}")
+    for user in users:
+        try:
+            resp = client.get_users_tweets(
+                id=user.id,
+                max_results=MAX_TWEETS_PER_ACCOUNT,
+                tweet_fields=["public_metrics", "created_at", "text"],
+                exclude=["retweets", "replies"],
+            )
+            if not resp.data:
+                continue
 
-        if text:
-            tweets.append({
-                "text": text,
-                "author": author,
-                "url": url,
-                "likes": likes,
-                "views": views,
-                "retweets": retweets,
-                "replies": replies,
-                "engagement_score": engagement,
-            })
+            for tweet in resp.data:
+                m = tweet.public_metrics or {}
+                likes    = m.get("like_count", 0)
+                retweets = m.get("retweet_count", 0)
+                replies  = m.get("reply_count", 0)
+                quotes   = m.get("quote_count", 0)
+                views    = m.get("impression_count", 0)
+                engagement = likes + (views // 100) + (retweets * 3) + (replies * 2) + (quotes * 2)
+
+                tweets.append({
+                    "text": tweet.text,
+                    "author": user.username,
+                    "url": f"https://twitter.com/{user.username}/status/{tweet.id}",
+                    "likes": likes,
+                    "views": views,
+                    "retweets": retweets,
+                    "replies": replies,
+                    "engagement_score": engagement,
+                })
+
+            time.sleep(0.5)  # avoid hitting rate limits
+
+        except tweepy.TweepyException as e:
+            logger.warning(f"Failed to fetch tweets for @{user.username}: {e}")
+            continue
 
     logger.info(f"Fetched {len(tweets)} tweets total.")
     return tweets
 
 
 def get_most_viral_tweet(tweets: list[dict]) -> dict:
-    """Return the single tweet with the highest engagement score."""
     if not tweets:
         raise ValueError("No tweets found to rank.")
     best = max(tweets, key=lambda t: t["engagement_score"])
-    logger.info(f"Most viral tweet: @{best['author']} — {best['likes']} likes, {best['views']} views")
+    logger.info(f"Most viral: @{best['author']} — {best['likes']} likes, {best['views']} views")
     return best
 
 
 def scrape(hour_utc: int) -> tuple[dict, dict]:
-    """
-    Main entry point.
-    Returns (theme, viral_tweet).
-    """
     theme = get_theme_for_slot(hour_utc)
     logger.info(f"Theme for slot {hour_utc}: {theme['emoji']} {theme['name']}")
 
     handles = get_accounts_for_theme(theme["id"])
-    logger.info(f"Loaded {len(handles)} accounts for this theme.")
+    logger.info(f"Loaded {len(handles)} accounts.")
 
     tweets = scrape_tweets_for_accounts(handles)
     viral_tweet = get_most_viral_tweet(tweets)

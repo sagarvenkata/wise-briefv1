@@ -1,4 +1,3 @@
-apify-client
 anthropic
 tweepy
 supabase
