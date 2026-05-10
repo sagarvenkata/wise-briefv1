@@ -6,13 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: 'Run in test mode (skip scraper, use sample tweet)'
+        description: 'Set to true to run in test mode'
         required: false
         default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
 
 jobs:
   run-brief:
