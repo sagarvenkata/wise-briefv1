@@ -64,17 +64,18 @@ def _log(theme_id: int, viral_tweet: dict, tweet_id: str, status: str, error: st
 
 def post(theme: dict, viral_tweet: dict, content: dict):
     """
-    Quote tweet the original post so the image/video is embedded,
-    then reply with thank you + follow + sources.
+    Post full content as standalone tweet with original URL embedded
+    so X auto-previews the original post (images/video included).
+    Then reply with thank you + follow + sources.
     """
     client = _twitter()
-    quote_id = viral_tweet.get("tweet_id") or viral_tweet["url"].split("/")[-1]
 
-    # Tweet 1: full content as quote tweet (embeds original with images/video)
-    post_text = content["content"] + f"\n\nVia @{viral_tweet.get('author', '')}"
+    # Embed original tweet URL — X will auto-preview it with images/video
+    original_url = viral_tweet.get("url", "")
+    post_text = content["content"] + f"\n\n{original_url}"
 
-    logger.info(f"Posting as quote tweet of {quote_id} ...")
-    main_id = _post_with_retry(client, post_text, quote_tweet_id=quote_id)
+    logger.info("Posting main content tweet with embedded URL ...")
+    main_id = _post_with_retry(client, post_text)
     logger.info(f"Main tweet posted: {main_id}")
 
     # Reply: thank you + follow + sources
