@@ -19,13 +19,14 @@ logger = logging.getLogger("main")
 
 # Sample viral tweet used in test mode — bypasses scraper entirely
 TEST_TWEET = {
-    "text": "The entire Roman Empire ran on a currency backed by nothing but trust in the state. Sound familiar? The moment that trust broke in 270 AD, inflation hit 1000% in a decade. Every empire since has made the same mistake.",
-    "author": "historyinmemes",
-    "url": "https://twitter.com/historyinmemes/status/1234567890",
-    "likes": 48200,
-    "views": 2100000,
-    "retweets": 9400,
-    "replies": 1200,
+    "text": "You just got off a 12 hour shift and come home to this. What you doing next?",
+    "author": "Bornakang",
+    "url": "https://x.com/Bornakang/status/2052211823303119017",
+    "tweet_id": "2052211823303119017",
+    "likes": 0,
+    "views": 0,
+    "retweets": 0,
+    "replies": 0,
     "engagement_score": 999999,
 }
 

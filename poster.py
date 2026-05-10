@@ -23,13 +23,15 @@ def _db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
-def _post_with_retry(client: tweepy.Client, text: str, reply_to: str = None) -> str:
+def _post_with_retry(client: tweepy.Client, text: str, reply_to: str = None, quote_tweet_id: str = None) -> str:
     """Post a single tweet, retry once on failure. Returns tweet ID."""
     for attempt in range(1, 3):
         try:
             kwargs = {"text": text}
             if reply_to:
                 kwargs["in_reply_to_tweet_id"] = reply_to
+            if quote_tweet_id:
+                kwargs["quote_tweet_id"] = quote_tweet_id
             response = client.create_tweet(**kwargs)
             return response.data["id"]
         except tweepy.TweepyException as e:
@@ -62,14 +64,15 @@ def _log(theme_id: int, viral_tweet: dict, tweet_id: str, status: str, error: st
 
 def post(theme: dict, viral_tweet: dict, content: dict):
     """
-    Post hook tweet, then reply with expansion + sources.
-    content = {hook, expansion, reply}
+    Quote tweet the original viral tweet with the hook,
+    then reply with expansion + sources.
     """
     client = _twitter()
+    quote_id = viral_tweet.get("tweet_id") or viral_tweet["url"].split("/")[-1]
 
-    # Tweet 1: hook
-    logger.info("Posting hook tweet ...")
-    hook_id = _post_with_retry(client, content["hook"])
+    # Tweet 1: hook as a quote tweet of the original
+    logger.info(f"Posting hook as quote tweet of {quote_id} ...")
+    hook_id = _post_with_retry(client, content["hook"], quote_tweet_id=quote_id)
     logger.info(f"Hook posted: {hook_id}")
 
     # Tweet 2: expansion as reply to hook
@@ -77,7 +80,7 @@ def post(theme: dict, viral_tweet: dict, content: dict):
     expansion_id = _post_with_retry(client, content["expansion"], reply_to=hook_id)
     logger.info(f"Expansion posted: {expansion_id}")
 
-    # Tweet 3: reply with sources
+    # Tweet 3: sources as reply to expansion
     logger.info("Posting sources reply ...")
     _post_with_retry(client, content["reply"], reply_to=expansion_id)
     logger.info("Sources posted.")

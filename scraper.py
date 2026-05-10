@@ -54,6 +54,7 @@ def _fetch_rss(handle: str) -> list[dict]:
                             "text": text,
                             "author": handle,
                             "url": link,
+                            "tweet_id": link.split("/")[-1],
                             "likes": 0,
                             "views": 0,
                             "retweets": 0,
