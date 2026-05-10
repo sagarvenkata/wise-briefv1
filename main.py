@@ -19,14 +19,14 @@ logger = logging.getLogger("main")
 
 # Sample viral tweet used in test mode — bypasses scraper entirely
 TEST_TWEET = {
-    "text": "The biggest skill no one teaches you: how to think clearly under pressure. Most people freeze. The ones who don't have practiced one thing — separating what they can control from what they can't.",
-    "author": "naval",
-    "url": "https://twitter.com/naval/status/1167928560906993664",
-    "tweet_id": "1167928560906993664",
-    "likes": 42000,
-    "views": 3200000,
-    "retweets": 8900,
-    "replies": 1100,
+    "text": "If you found bitcoin in 2012 you are a millionaire.\n\nIf you found Tesla in 2018 you are a millionaire\n\nIf you found Nvidia in 2022 you are a millionaire\n\nIf you found Palantir in 2023 you are a millionaire\n\nIf you found Sandisk in 2025 you are a millionaire",
+    "author": "DekmarTrades",
+    "url": "https://x.com/DekmarTrades/status/2053139246253289531",
+    "tweet_id": "2053139246253289531",
+    "likes": 0,
+    "views": 0,
+    "retweets": 0,
+    "replies": 0,
     "engagement_score": 999999,
 }
 
