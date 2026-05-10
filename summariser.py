@@ -31,7 +31,11 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
         "Output JSON only. No markdown. No extra commentary."
     )
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        timeout=60.0,
+        max_retries=0,
+    )
     logger.info(f"Calling Claude ({MODEL}) for theme: {theme['name']} ...")
 
     for attempt in range(1, 6):
