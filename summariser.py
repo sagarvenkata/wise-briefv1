@@ -47,7 +47,7 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
         try:
             response = client.chat.completions.create(
                 model=MODEL,
-                max_tokens=2048,
+                max_tokens=8192,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
