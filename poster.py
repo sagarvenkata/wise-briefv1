@@ -64,20 +64,20 @@ def _log(theme_id: int, viral_tweet: dict, tweet_id: str, status: str, error: st
 
 def post(theme: dict, viral_tweet: dict, content: dict):
     """
-    Post full content as one tweet with Via @author,
+    Quote tweet the original post so the image/video is embedded,
     then reply with thank you + follow + sources.
     """
     client = _twitter()
+    quote_id = viral_tweet.get("tweet_id") or viral_tweet["url"].split("/")[-1]
 
-    # Tweet 1: full content with source attribution (X Premium supports long posts)
-    author = viral_tweet.get("author", "")
-    post_text = content["content"] + f"\n\nVia @{author}"
+    # Tweet 1: full content as quote tweet (embeds original with images/video)
+    post_text = content["content"] + f"\n\nVia @{viral_tweet.get('author', '')}"
 
-    logger.info("Posting main content tweet ...")
-    main_id = _post_with_retry(client, post_text)
+    logger.info(f"Posting as quote tweet of {quote_id} ...")
+    main_id = _post_with_retry(client, post_text, quote_tweet_id=quote_id)
     logger.info(f"Main tweet posted: {main_id}")
 
-    # Tweet 2: reply with thank you + follow + sources
+    # Reply: thank you + follow + sources
     logger.info("Posting reply with sources ...")
     _post_with_retry(client, content["reply"], reply_to=main_id)
     logger.info("Reply posted.")
