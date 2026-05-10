@@ -10,9 +10,15 @@ def get_db():
 
 
 def get_theme_for_slot(hour_utc: int) -> dict:
-    """Return the theme whose post_hour_utc matches the current UTC hour."""
+    """Return the theme whose post_hour_utc matches the current UTC hour.
+    If no exact match, round down to nearest even hour."""
     db = get_db()
     result = db.table("themes").select("*").eq("post_hour_utc", hour_utc).eq("active", True).execute()
+    if not result.data:
+        # Round down to nearest scheduled hour (even hours 0,2,4...22)
+        nearest = (hour_utc // 2) * 2
+        logger.info(f"No theme for hour {hour_utc}, falling back to hour {nearest}")
+        result = db.table("themes").select("*").eq("post_hour_utc", nearest).eq("active", True).execute()
     if not result.data:
         raise ValueError(f"No active theme found for UTC hour {hour_utc}")
     return result.data[0]
