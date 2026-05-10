@@ -1,5 +1,5 @@
 feedparser
-anthropic
+openai
 tweepy
 supabase
 python-dotenv
