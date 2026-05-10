@@ -50,6 +50,7 @@ def main():
 
     logger.info("--- Stage 2: Summarising ---")
     content = summariser.summarise(theme, viral_tweet)
+    logger.info(f"Content preview: {content['content'][:80]}...")
 
     logger.info("--- Stage 3: Posting ---")
     poster.post(theme, viral_tweet, content)

@@ -22,11 +22,21 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
     system = (
         "You are the content engine behind Wise Brief on X (Twitter). "
         "You decode viral stories for a global audience. "
-        "Your output must be a valid JSON object with exactly three keys: "
-        "\"hook\" (string, under 280 chars, ends with 🧵), "
-        "\"expansion\" (string, 6-10 paragraphs, each under 300 chars, separated by double newline), "
-        "\"reply\" (string, 3 sources + follow CTA). "
-        "Output JSON only. No markdown. No extra commentary."
+        "Your output must be a valid JSON object with exactly two keys: "
+        "\"content\" and \"reply\". "
+        "\n\n"
+        "\"content\": The full post. Start with a punchy hook line opening with a number or stat, no questions, ends with 🧵. "
+        "Then a blank line. Then 6 to 10 paragraphs separated by blank lines. "
+        "Each paragraph must be 2 to 3 full sentences minimum. Never one-liners. "
+        "Follow all paragraph instructions from the user prompt (P1 through P6 and BONUS). "
+        "No em-dashes. Plain conversational language. Always use real numbers and named examples. "
+        "\n\n"
+        "\"reply\": Start with exactly: "
+        "\"Thank you for spending time on our post! If you liked the content, follow @TheWiseBrief for more.\n\n—————\n\nSources:\n\" "
+        "Then list 3 to 5 real, specific sources with full URLs on separate lines. "
+        "Format each as: Description — URL"
+        "\n\n"
+        "Output JSON only. No markdown fences. No extra commentary."
     )
 
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -63,9 +73,9 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
             raise ValueError(f"Could not parse JSON from Groq: {raw[:200]}")
         output = json.loads(raw[start:end])
 
-    for key in ("hook", "expansion", "reply"):
+    for key in ("content", "reply"):
         if key not in output:
             raise ValueError(f"Groq response missing key: {key}")
 
-    logger.info(f"Hook: {output['hook'][:80]}...")
+    logger.info(f"Content preview: {output['content'][:80]}...")
     return output

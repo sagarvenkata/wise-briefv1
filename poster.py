@@ -64,31 +64,25 @@ def _log(theme_id: int, viral_tweet: dict, tweet_id: str, status: str, error: st
 
 def post(theme: dict, viral_tweet: dict, content: dict):
     """
-    Post hook tweet as standalone with source attribution,
-    then reply with expansion + sources.
+    Post full content as one tweet with Via @author,
+    then reply with thank you + follow + sources.
     """
     client = _twitter()
 
-    # Append source attribution to hook
+    # Tweet 1: full content with source attribution
     author = viral_tweet.get("author", "")
-    hook_text = content["hook"]
+    post_text = content["content"]
     attribution = f"\n\nVia @{author}"
-    if len(hook_text) + len(attribution) <= 280:
-        hook_text = hook_text + attribution
+    if len(post_text) + len(attribution) <= 280:
+        post_text = post_text + attribution
 
-    # Tweet 1: hook as standalone tweet
-    logger.info("Posting hook tweet ...")
-    hook_id = _post_with_retry(client, hook_text)
-    logger.info(f"Hook posted: {hook_id}")
+    logger.info("Posting main content tweet ...")
+    main_id = _post_with_retry(client, post_text)
+    logger.info(f"Main tweet posted: {main_id}")
 
-    # Tweet 2: expansion as reply to hook
-    logger.info("Posting expansion ...")
-    expansion_id = _post_with_retry(client, content["expansion"], reply_to=hook_id)
-    logger.info(f"Expansion posted: {expansion_id}")
+    # Tweet 2: reply with thank you + follow + sources
+    logger.info("Posting reply with sources ...")
+    _post_with_retry(client, content["reply"], reply_to=main_id)
+    logger.info("Reply posted.")
 
-    # Tweet 3: sources as reply to expansion
-    logger.info("Posting sources reply ...")
-    _post_with_retry(client, content["reply"], reply_to=expansion_id)
-    logger.info("Sources posted.")
-
-    _log(theme["id"], viral_tweet, hook_id, "success")
+    _log(theme["id"], viral_tweet, main_id, "success")
