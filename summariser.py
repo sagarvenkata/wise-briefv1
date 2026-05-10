@@ -2,16 +2,16 @@ import os
 import json
 import time
 import logging
-from openai import OpenAI
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gpt-4o"
+MODEL = "llama-3.3-70b-versatile"
 
 
 def summarise(theme: dict, viral_tweet: dict) -> dict:
     """
-    Inject the viral tweet into the theme prompt and call GPT-4o.
+    Inject the viral tweet into the theme prompt and call Groq.
     Returns dict with keys: hook, expansion, reply.
     """
     prompt = theme["prompt"]
@@ -29,8 +29,8 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
         "Output JSON only. No markdown. No extra commentary."
     )
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    logger.info(f"Calling {MODEL} for theme: {theme['name']} ...")
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    logger.info(f"Calling Groq ({MODEL}) for theme: {theme['name']} ...")
 
     for attempt in range(1, 6):
         try:
@@ -46,13 +46,13 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
             break
         except Exception as e:
             wait = 10 * attempt
-            logger.warning(f"OpenAI API error (attempt {attempt}/5): {e}. Retrying in {wait}s ...")
+            logger.warning(f"Groq API error (attempt {attempt}/5): {e}. Retrying in {wait}s ...")
             if attempt == 5:
                 raise
             time.sleep(wait)
 
     raw = response.choices[0].message.content.strip()
-    logger.info("GPT-4o response received.")
+    logger.info("Groq response received.")
 
     try:
         output = json.loads(raw)
@@ -60,12 +60,12 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start == -1 or end == 0:
-            raise ValueError(f"Could not parse JSON from GPT-4o: {raw[:200]}")
+            raise ValueError(f"Could not parse JSON from Groq: {raw[:200]}")
         output = json.loads(raw[start:end])
 
     for key in ("hook", "expansion", "reply"):
         if key not in output:
-            raise ValueError(f"GPT-4o response missing key: {key}")
+            raise ValueError(f"Groq response missing key: {key}")
 
     logger.info(f"Hook: {output['hook'][:80]}...")
     return output

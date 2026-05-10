@@ -21,15 +21,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check OpenAI connectivity
+      - name: Check Groq connectivity
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.openai.com/v1/models \
-            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}")
-          echo "OpenAI API status: $STATUS"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.groq.com/openai/v1/models \
+            -H "Authorization: Bearer ${{ secrets.GROQ_API_KEY }}")
+          echo "Groq API status: $STATUS"
 
       - name: Run pipeline
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
           TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
           TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
