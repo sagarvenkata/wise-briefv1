@@ -33,8 +33,9 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
         "\n\n"
         "\"reply\": Start with exactly: "
         "\"Thank you for spending time on our post! If you liked the content, follow @TheWiseBrief for more.\n\n—————\n\nSources:\n\" "
-        "Then list 3 to 5 real, specific sources with full URLs on separate lines. "
-        "Format each as: Description — URL"
+        "Then list 3 to 5 real, specific sources with full clickable URLs on separate lines. "
+        "Every source MUST include a real working https:// URL. "
+        "Format each as: Description — https://full-url-here"
         "\n\n"
         "Output JSON only. No markdown fences. No extra commentary."
     )

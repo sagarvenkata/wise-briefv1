@@ -69,12 +69,9 @@ def post(theme: dict, viral_tweet: dict, content: dict):
     """
     client = _twitter()
 
-    # Tweet 1: full content with source attribution
+    # Tweet 1: full content with source attribution (X Premium supports long posts)
     author = viral_tweet.get("author", "")
-    post_text = content["content"]
-    attribution = f"\n\nVia @{author}"
-    if len(post_text) + len(attribution) <= 280:
-        post_text = post_text + attribution
+    post_text = content["content"] + f"\n\nVia @{author}"
 
     logger.info("Posting main content tweet ...")
     main_id = _post_with_retry(client, post_text)
