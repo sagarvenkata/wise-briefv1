@@ -3,7 +3,16 @@ name: Wise Brief — Every 2 Hours
 on:
   schedule:
     - cron: '30 0,2,4,6,8,10,12,14,16,18,20,22 * * *'  # :30 past every even UTC hour
-  workflow_dispatch:       # allows manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (skip scraper, use sample tweet)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   run-brief:
@@ -35,4 +44,4 @@ jobs:
           TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python main.py
+        run: python main.py ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
