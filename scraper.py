@@ -38,40 +38,45 @@ def scrape_tweets_for_accounts(handles: list[str]) -> list[dict]:
 
     logger.info(f"Scraping tweets from {len(handles)} accounts via Apify ...")
 
-    try:
-        run = client.actor("apidojo/tweet-scraper").call(
-            run_input={
-                "startUrls": [f"https://twitter.com/{h}" for h in handles],
-                "maxTweets": 5,
-                "addUserInfo": False,
-            }
-        )
-        items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
-    except Exception as e:
-        logger.error(f"Apify Twitter scraper failed: {e}")
-        return []
+    all_tweets = []
 
-    tweets = []
-    for item in items:
-        likes = item.get("likeCount", 0) or 0
-        views = item.get("viewCount", 0) or 0
-        retweets = item.get("retweetCount", 0) or 0
-        replies = item.get("replyCount", 0) or 0
-        engagement = likes + (views // 100) + (retweets * 3) + (replies * 2)
+    for handle in handles:
+        try:
+            run = client.actor("quacker/twitter-scraper").call(
+                run_input={
+                    "handle": handle,
+                    "tweetsDesired": 5,
+                }
+            )
+            items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+        except Exception as e:
+            logger.warning(f"Apify failed for @{handle}: {e}")
+            continue
 
-        tweets.append({
-            "text": item.get("text", ""),
-            "author": item.get("author", {}).get("userName", ""),
-            "url": item.get("url", ""),
-            "likes": likes,
-            "views": views,
-            "retweets": retweets,
-            "replies": replies,
-            "engagement_score": engagement,
-        })
+        for item in items:
+            likes = item.get("favorite_count", 0) or item.get("likeCount", 0) or 0
+            views = item.get("views", {}).get("count", 0) if isinstance(item.get("views"), dict) else item.get("viewCount", 0) or 0
+            retweets = item.get("retweet_count", 0) or item.get("retweetCount", 0) or 0
+            replies = item.get("reply_count", 0) or item.get("replyCount", 0) or 0
+            engagement = likes + (views // 100) + (retweets * 3) + (replies * 2)
 
-    logger.info(f"Fetched {len(tweets)} tweets total.")
-    return tweets
+            text = item.get("full_text", "") or item.get("text", "")
+            url = f"https://twitter.com/{handle}/status/{item.get('id_str', item.get('id', ''))}"
+
+            if text:
+                all_tweets.append({
+                    "text": text,
+                    "author": handle,
+                    "url": url,
+                    "likes": likes,
+                    "views": views,
+                    "retweets": retweets,
+                    "replies": replies,
+                    "engagement_score": engagement,
+                })
+
+    logger.info(f"Fetched {len(all_tweets)} tweets total.")
+    return all_tweets
 
 
 def get_most_viral_tweet(tweets: list[dict]) -> dict:

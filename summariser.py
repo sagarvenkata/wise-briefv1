@@ -33,12 +33,21 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     logger.info(f"Calling Claude ({MODEL}) for theme: {theme['name']} ...")
 
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    for attempt in range(1, 4):
+        try:
+            message = client.messages.create(
+                model=MODEL,
+                max_tokens=2048,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            break
+        except Exception as e:
+            logger.warning(f"Claude API error (attempt {attempt}): {e}")
+            if attempt == 3:
+                raise
+            import time
+            time.sleep(5 * attempt)
 
     raw = message.content[0].text.strip()
     logger.info("Claude response received.")
