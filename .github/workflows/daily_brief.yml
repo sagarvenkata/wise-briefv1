@@ -1,8 +1,8 @@
-name: Daily Wise Brief
+name: Wise Brief — Every 2 Hours
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # 7am UTC daily
+    - cron: '30 0,2,4,6,8,10,12,14,16,18,20,22 * * *'  # :30 past every even UTC hour
   workflow_dispatch:       # allows manual trigger from GitHub UI
 
 jobs:
