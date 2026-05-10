@@ -2,13 +2,8 @@ name: Wise Brief — Every 2 Hours
 
 on:
   schedule:
-    - cron: '30 0,2,4,6,8,10,12,14,16,18,20,22 * * *'  # :30 past every even UTC hour
+    - cron: '30 0,2,4,6,8,10,12,14,16,18,20,22 * * *'
   workflow_dispatch:
-    inputs:
-      test_mode:
-        description: 'Set to true to run in test mode'
-        required: false
-        default: 'false'
 
 jobs:
   run-brief:
@@ -43,4 +38,4 @@ jobs:
           TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python main.py ${{ github.event.inputs.test_mode == 'true' && '--test' || '' }}
+        run: python main.py --test
