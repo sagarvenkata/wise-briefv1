@@ -33,7 +33,7 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     logger.info(f"Calling Claude ({MODEL}) for theme: {theme['name']} ...")
 
-    for attempt in range(1, 4):
+    for attempt in range(1, 6):
         try:
             message = client.messages.create(
                 model=MODEL,
@@ -43,11 +43,11 @@ def summarise(theme: dict, viral_tweet: dict) -> dict:
             )
             break
         except Exception as e:
-            logger.warning(f"Claude API error (attempt {attempt}): {e}")
-            if attempt == 3:
+            wait = 10 * attempt
+            logger.warning(f"Claude API error (attempt {attempt}/5): {e}. Retrying in {wait}s ...")
+            if attempt == 5:
                 raise
-            import time
-            time.sleep(5 * attempt)
+            time.sleep(wait)
 
     raw = message.content[0].text.strip()
     logger.info("Claude response received.")
