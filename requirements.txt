@@ -1,5 +1,6 @@
-feedparser
+apify-client
 groq
-tweepy
+resend
+requests
 supabase
 python-dotenv

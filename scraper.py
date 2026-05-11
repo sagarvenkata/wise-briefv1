@@ -1,20 +1,25 @@
 import os
-import time
 import logging
-import feedparser
+from datetime import datetime, timezone, timedelta
+
+from apify_client import ApifyClient
 from supabase import create_client
 
 logger = logging.getLogger(__name__)
 
-NITTER_INSTANCES = [
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.1d4.us",
-]
+MIN_LIKES = 10_000
+MIN_IMPRESSIONS = 1_000_000
+MIN_REPLIES = 5
 
 
 def get_db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+
+
+def get_all_active_themes() -> list[dict]:
+    db = get_db()
+    result = db.table("themes").select("*").eq("active", True).order("post_hour_utc").execute()
+    return result.data
 
 
 def get_theme_for_slot(hour_utc: int) -> dict:
@@ -29,78 +34,112 @@ def get_theme_for_slot(hour_utc: int) -> dict:
     return result.data[0]
 
 
-def get_accounts_for_theme(theme_id: int) -> list[str]:
-    db = get_db()
-    result = db.table("theme_accounts").select("twitter_handle").eq("theme_id", theme_id).execute()
-    return [row["twitter_handle"] for row in result.data]
+def _is_within_24h(created_at: str) -> bool:
+    if not created_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) - dt <= timedelta(hours=24)
+    except Exception:
+        return False
 
 
-def _fetch_rss(handle: str) -> list[dict]:
-    """Try each Nitter instance until one returns tweets for this handle."""
-    for instance in NITTER_INSTANCES:
-        url = f"{instance}/{handle}/rss"
-        try:
-            feed = feedparser.parse(url)
-            if feed.entries:
-                tweets = []
-                for entry in feed.entries[:5]:
-                    text = entry.get("summary", "") or entry.get("title", "")
-                    # Strip HTML tags
-                    import re
-                    text = re.sub(r"<[^>]+>", "", text).strip()
-                    link = entry.get("link", f"https://twitter.com/{handle}")
-                    if text:
-                        tweets.append({
-                            "text": text,
-                            "author": handle,
-                            "url": link,
-                            "tweet_id": link.split("/")[-1],
-                            "likes": 0,
-                            "views": 0,
-                            "retweets": 0,
-                            "replies": 0,
-                            "engagement_score": 0,
-                        })
-                return tweets
-        except Exception as e:
-            logger.warning(f"Nitter instance {instance} failed for @{handle}: {e}")
-            continue
-    return []
+def _score_tweet(t: dict) -> float:
+    return (
+        t.get("likeCount", 0) * 3
+        + t.get("viewCount", 0) * 0.001
+        + t.get("replyCount", 0) * 2
+        + t.get("retweetCount", 0) * 1.5
+    )
 
 
-def scrape_tweets_for_accounts(handles: list[str]) -> list[dict]:
-    """Fetch recent tweets from all accounts via Nitter RSS."""
-    all_tweets = []
+def get_top_tweet_for_theme(client: ApifyClient, theme_name: str, search_term: str) -> dict | None:
+    run_input = {
+        "customMapFunction": "(object) => { return {...object} }",
+        "includeSearchTerms": True,
+        "maxItems": 50,
+        "onlyVideo": False,
+        "searchTerms": [search_term],
+        "sort": "Top",
+        "tweetLanguage": "en",
+    }
 
-    for handle in handles:
-        tweets = _fetch_rss(handle)
-        all_tweets.extend(tweets)
-        time.sleep(0.3)
+    try:
+        run = client.actor("apidojo/tweet-scraper").call(run_input=run_input)
+        all_tweets = [
+            item
+            for item in client.dataset(run["defaultDatasetId"]).iterate_items()
+            if item.get("text") and item.get("url")
+        ]
 
-    logger.info(f"Fetched {len(all_tweets)} tweets total.")
-    return all_tweets
+        if not all_tweets:
+            logger.warning(f"No tweets at all for theme: {theme_name}")
+            return None
 
+        # Pass 1 — strict: within 24h and all engagement thresholds met
+        strict = [
+            t for t in all_tweets
+            if t.get("likeCount", 0) >= MIN_LIKES
+            and t.get("viewCount", 0) >= MIN_IMPRESSIONS
+            and t.get("replyCount", 0) >= MIN_REPLIES
+            and _is_within_24h(t.get("createdAt", ""))
+        ]
 
-def get_most_viral_tweet(tweets: list[dict]) -> dict:
-    """
-    Since RSS has no engagement data, pick the longest/most substantive tweet
-    as a proxy for content quality. Claude will do the real curation.
-    """
-    if not tweets:
-        raise ValueError("No tweets found to rank.")
-    best = max(tweets, key=lambda t: len(t["text"]))
-    logger.info(f"Selected tweet from @{best['author']} ({len(best['text'])} chars)")
-    return best
+        if strict:
+            best = max(strict, key=_score_tweet)
+            logger.info(f"[{theme_name}] STRICT — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
+        else:
+            # Pass 2 — nothing cleared the bar; run a fresh search for trending content
+            logger.info(f"[{theme_name}] No tweet cleared thresholds — searching trending fallback")
+            trending_term = f"trending {search_term}"
+            trending_run = client.actor("apidojo/tweet-scraper").call(run_input={
+                **run_input,
+                "searchTerms": [trending_term],
+                "maxItems": 20,
+            })
+            trending_tweets = [
+                item
+                for item in client.dataset(trending_run["defaultDatasetId"]).iterate_items()
+                if item.get("text") and item.get("url")
+            ]
+            pool = trending_tweets or all_tweets
+            best = max(pool, key=lambda t: t.get("likeCount", 0))
+            logger.info(f"[{theme_name}] TRENDING FALLBACK — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
+
+        url = best.get("url", "")
+        return {
+            "text": best.get("text", ""),
+            "url": url,
+            "author": best.get("author", {}).get("userName", ""),
+            "tweet_id": url.split("/")[-1],
+            "likes": best.get("likeCount", 0),
+            "views": best.get("viewCount", 0),
+            "retweets": best.get("retweetCount", 0),
+            "replies": best.get("replyCount", 0),
+            "engagement_score": _score_tweet(best),
+            "createdAt": best.get("createdAt", ""),
+        }
+
+    except Exception as e:
+        logger.error(f"Apify error for theme [{theme_name}]: {e}")
+        return None
 
 
 def scrape(hour_utc: int) -> tuple[dict, dict]:
     theme = get_theme_for_slot(hour_utc)
     logger.info(f"Theme for slot {hour_utc}: {theme['emoji']} {theme['name']}")
 
-    handles = get_accounts_for_theme(theme["id"])
-    logger.info(f"Loaded {len(handles)} accounts.")
+    # Use dedicated search_term if set, otherwise fall back to theme name
+    search_term = theme.get("search_term") or theme["name"]
 
-    tweets = scrape_tweets_for_accounts(handles)
-    viral_tweet = get_most_viral_tweet(tweets)
+    client = ApifyClient(os.environ["APIFY_API_TOKEN"])
+    viral_tweet = get_top_tweet_for_theme(client, theme["name"], search_term)
 
+    if viral_tweet is None:
+        raise ValueError(f"No usable tweet found for theme: {theme['name']}")
+
+    logger.info(
+        f"Selected tweet: @{viral_tweet['author']} | "
+        f"{viral_tweet['likes']:,} likes | {viral_tweet['views']:,} views"
+    )
     return theme, viral_tweet

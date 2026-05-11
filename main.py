@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 import summariser
 import poster
 import scraper
+import mailer
+import buffer_poster
 
 load_dotenv()
 
@@ -31,13 +33,51 @@ TEST_TWEET = {
 }
 
 
-def main():
+def run_digest():
+    """Scrape + summarise all 12 themes and email a daily digest."""
+    logger.info("=== Wise Brief DIGEST mode starting ===")
+    themes = scraper.get_all_active_themes()
+    logger.info(f"Found {len(themes)} active themes.")
+
+    client = scraper.ApifyClient(os.environ["APIFY_API_TOKEN"])
+    results = []
+
+    for theme in themes:
+        logger.info(f"--- {theme['emoji']} {theme['name']} ---")
+        search_term = theme.get("search_term") or theme["name"]
+
+        try:
+            tweet = scraper.get_top_tweet_for_theme(client, theme["name"], search_term)
+            if tweet is None:
+                logger.warning(f"No tweet found for {theme['name']} — skipping.")
+                continue
+
+            content = summariser.summarise(theme, tweet)
+            results.append({"theme": theme, "tweet": tweet, "content": content})
+            logger.info(f"Done: {theme['name']}")
+        except Exception as e:
+            logger.error(f"Failed for {theme['name']}: {e} — skipping.")
+            continue
+
+    if not results:
+        logger.error("No results to email — aborting.")
+        sys.exit(1)
+
+    logger.info(f"Pushing {len(results)} posts to Buffer queue ...")
+    buffer_poster.queue_all(results)
+
+    logger.info(f"Sending digest email with {len(results)}/{len(themes)} themes ...")
+    mailer.send_digest(results)
+    logger.info("=== Digest complete ===")
+
+
+def run_single():
+    """Post one tweet for the current UTC hour's theme (original live-post mode)."""
     test_mode = "--test" in sys.argv
     hour_utc = datetime.now(timezone.utc).hour
 
     if test_mode:
         logger.info("=== Wise Brief pipeline starting [TEST MODE] ===")
-        logger.info("Skipping scraper — using hardcoded sample tweet.")
         theme = scraper.get_theme_for_slot(hour_utc)
         viral_tweet = TEST_TWEET
     else:
@@ -50,12 +90,18 @@ def main():
 
     logger.info("--- Stage 2: Summarising ---")
     content = summariser.summarise(theme, viral_tweet)
-    logger.info(f"Content preview: {content['content'][:80]}...")
 
     logger.info("--- Stage 3: Posting ---")
     poster.post(theme, viral_tweet, content)
 
     logger.info("=== Wise Brief pipeline complete ===")
+
+
+def main():
+    if "--digest" in sys.argv:
+        run_digest()
+    else:
+        run_single()
 
 
 if __name__ == "__main__":
