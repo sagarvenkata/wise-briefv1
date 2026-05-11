@@ -72,11 +72,13 @@ def _to_dict(tweet) -> dict:
 async def _setup_api() -> API:
     os.makedirs(os.path.dirname(TWSCRAPE_DB), exist_ok=True)
     api = API(TWSCRAPE_DB)
+    cookies = f"auth_token={os.environ['TWSCRAPE_AUTH_TOKEN']}; ct0={os.environ['TWSCRAPE_CT0']}"
     await api.pool.add_account(
         username=os.environ["TWSCRAPE_USERNAME"],
         password=os.environ["TWSCRAPE_PASSWORD"],
         email=os.environ["TWSCRAPE_EMAIL"],
         email_password=os.environ["TWSCRAPE_EMAIL_PASSWORD"],
+        cookies=cookies,
     )
     await api.pool.login_all()
     return api

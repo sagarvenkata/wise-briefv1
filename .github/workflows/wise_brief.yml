@@ -41,4 +41,6 @@ jobs:
           TWSCRAPE_PASSWORD: ${{ secrets.TWSCRAPE_PASSWORD }}
           TWSCRAPE_EMAIL: ${{ secrets.TWSCRAPE_EMAIL }}
           TWSCRAPE_EMAIL_PASSWORD: ${{ secrets.TWSCRAPE_EMAIL_PASSWORD }}
+          TWSCRAPE_AUTH_TOKEN: ${{ secrets.TWSCRAPE_AUTH_TOKEN }}
+          TWSCRAPE_CT0: ${{ secrets.TWSCRAPE_CT0 }}
         run: python main.py --digest
