@@ -57,7 +57,7 @@ def get_top_tweet_for_theme(client: ApifyClient, theme_name: str, search_term: s
     run_input = {
         "customMapFunction": "(object) => { return {...object} }",
         "includeSearchTerms": True,
-        "maxItems": 50,
+        "maxItems": 20,
         "onlyVideo": False,
         "searchTerms": [search_term],
         "sort": "Top",
@@ -89,22 +89,9 @@ def get_top_tweet_for_theme(client: ApifyClient, theme_name: str, search_term: s
             best = max(strict, key=_score_tweet)
             logger.info(f"[{theme_name}] STRICT — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
         else:
-            # Pass 2 — nothing cleared the bar; run a fresh search for trending content
-            logger.info(f"[{theme_name}] No tweet cleared thresholds — searching trending fallback")
-            trending_term = f"trending {search_term}"
-            trending_run = client.actor("apidojo/tweet-scraper").call(run_input={
-                **run_input,
-                "searchTerms": [trending_term],
-                "maxItems": 20,
-            })
-            trending_tweets = [
-                item
-                for item in client.dataset(trending_run["defaultDatasetId"]).iterate_items()
-                if item.get("text") and item.get("url")
-            ]
-            pool = trending_tweets or all_tweets
-            best = max(pool, key=lambda t: t.get("likeCount", 0))
-            logger.info(f"[{theme_name}] TRENDING FALLBACK — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
+            # Fallback — pick highest liked from the same batch, no second API call
+            best = max(all_tweets, key=lambda t: t.get("likeCount", 0))
+            logger.info(f"[{theme_name}] FALLBACK — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
 
         url = best.get("url", "")
         return {
