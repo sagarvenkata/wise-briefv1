@@ -34,9 +34,14 @@ TEST_TWEET = {
 
 def run_digest():
     """Scrape + summarise all 12 themes and email a daily digest."""
+    one_only = "--one" in sys.argv
     logger.info("=== Wise Brief DIGEST mode starting ===")
     themes = scraper.get_all_active_themes()
-    logger.info(f"Found {len(themes)} active themes.")
+    if one_only:
+        themes = themes[:1]
+        logger.info(f"--one flag: testing with 1 theme only ({themes[0]['name']})")
+    else:
+        logger.info(f"Found {len(themes)} active themes.")
 
     scraped = scraper.scrape_all(themes)
     results = []
