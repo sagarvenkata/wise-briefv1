@@ -1,8 +1,9 @@
 import os
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
-from apify_client import ApifyClient
+from twscrape import API, gather
 from supabase import create_client
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,8 @@ logger = logging.getLogger(__name__)
 MIN_LIKES = 10_000
 MIN_IMPRESSIONS = 1_000_000
 MIN_REPLIES = 5
+
+TWSCRAPE_DB = ".twscrape/accounts.db"
 
 
 def get_db():
@@ -34,99 +37,102 @@ def get_theme_for_slot(hour_utc: int) -> dict:
     return result.data[0]
 
 
-def _is_within_24h(created_at: str) -> bool:
-    if not created_at:
+def _is_within_24h(dt: datetime) -> bool:
+    if dt is None:
         return False
-    try:
-        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        return datetime.now(timezone.utc) - dt <= timedelta(hours=24)
-    except Exception:
-        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - dt <= timedelta(hours=24)
 
 
-def _score_tweet(t: dict) -> float:
+def _score(tweet) -> float:
     return (
-        t.get("likeCount", 0) * 3
-        + t.get("viewCount", 0) * 0.001
-        + t.get("replyCount", 0) * 2
-        + t.get("retweetCount", 0) * 1.5
+        (tweet.likeCount or 0) * 3
+        + (tweet.viewCount or 0) * 0.001
+        + (tweet.replyCount or 0) * 2
+        + (tweet.retweetCount or 0) * 1.5
     )
 
 
-def get_top_tweet_for_theme(client: ApifyClient, theme_name: str, search_term: str) -> dict | None:
-    run_input = {
-        "customMapFunction": "(object) => { return {...object} }",
-        "includeSearchTerms": True,
-        "maxItems": 20,
-        "onlyVideo": False,
-        "searchTerms": [search_term],
-        "sort": "Top",
-        "tweetLanguage": "en",
+def _to_dict(tweet) -> dict:
+    return {
+        "text": tweet.rawContent or "",
+        "url": str(tweet.url),
+        "author": tweet.user.username if tweet.user else "",
+        "tweet_id": str(tweet.id),
+        "likes": tweet.likeCount or 0,
+        "views": tweet.viewCount or 0,
+        "retweets": tweet.retweetCount or 0,
+        "replies": tweet.replyCount or 0,
+        "engagement_score": _score(tweet),
+        "createdAt": tweet.date.isoformat() if tweet.date else "",
     }
 
-    try:
-        run = client.actor("apidojo/tweet-scraper").call(run_input=run_input)
-        all_tweets = [
-            item
-            for item in client.dataset(run["defaultDatasetId"]).iterate_items()
-            if item.get("text") and item.get("url")
-        ]
 
-        if not all_tweets:
-            logger.warning(f"No tweets at all for theme: {theme_name}")
-            return None
+async def _setup_api() -> API:
+    os.makedirs(os.path.dirname(TWSCRAPE_DB), exist_ok=True)
+    api = API(TWSCRAPE_DB)
+    await api.pool.add_account(
+        username=os.environ["TWSCRAPE_USERNAME"],
+        password=os.environ["TWSCRAPE_PASSWORD"],
+        email=os.environ["TWSCRAPE_EMAIL"],
+        email_password=os.environ["TWSCRAPE_EMAIL_PASSWORD"],
+    )
+    await api.pool.login_all()
+    return api
 
-        # Pass 1 — strict: within 24h and all engagement thresholds met
-        strict = [
-            t for t in all_tweets
-            if t.get("likeCount", 0) >= MIN_LIKES
-            and t.get("viewCount", 0) >= MIN_IMPRESSIONS
-            and t.get("replyCount", 0) >= MIN_REPLIES
-            and _is_within_24h(t.get("createdAt", ""))
-        ]
 
-        if strict:
-            best = max(strict, key=_score_tweet)
-            logger.info(f"[{theme_name}] STRICT — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
-        else:
-            # Fallback — pick highest liked from the same batch, no second API call
-            best = max(all_tweets, key=lambda t: t.get("likeCount", 0))
-            logger.info(f"[{theme_name}] FALLBACK — @{best.get('author', {}).get('userName', '')} — {best.get('likeCount', 0):,} likes")
+async def _get_top_tweet(api: API, theme_name: str, search_term: str) -> dict | None:
+    tweets = await gather(api.search(search_term, limit=20, kv={"product": "Top"}))
 
-        url = best.get("url", "")
-        return {
-            "text": best.get("text", ""),
-            "url": url,
-            "author": best.get("author", {}).get("userName", ""),
-            "tweet_id": url.split("/")[-1],
-            "likes": best.get("likeCount", 0),
-            "views": best.get("viewCount", 0),
-            "retweets": best.get("retweetCount", 0),
-            "replies": best.get("replyCount", 0),
-            "engagement_score": _score_tweet(best),
-            "createdAt": best.get("createdAt", ""),
-        }
-
-    except Exception as e:
-        logger.error(f"Apify error for theme [{theme_name}]: {e}")
+    if not tweets:
+        logger.warning(f"No tweets found for theme: {theme_name}")
         return None
+
+    strict = [
+        t for t in tweets
+        if (t.likeCount or 0) >= MIN_LIKES
+        and (t.viewCount or 0) >= MIN_IMPRESSIONS
+        and (t.replyCount or 0) >= MIN_REPLIES
+        and _is_within_24h(t.date)
+    ]
+
+    if strict:
+        best = max(strict, key=_score)
+        logger.info(f"[{theme_name}] STRICT — @{best.user.username} — {best.likeCount:,} likes")
+    else:
+        best = max(tweets, key=lambda t: t.likeCount or 0)
+        logger.info(f"[{theme_name}] FALLBACK — @{best.user.username} — {best.likeCount:,} likes")
+
+    return _to_dict(best)
+
+
+async def _scrape_all_async(themes: list[dict]) -> list[tuple[dict, dict]]:
+    api = await _setup_api()
+    results = []
+    for theme in themes:
+        search_term = theme.get("search_term") or theme["name"]
+        try:
+            tweet = await _get_top_tweet(api, theme["name"], search_term)
+            if tweet:
+                results.append((theme, tweet))
+            else:
+                logger.warning(f"Skipping {theme['name']} — no usable tweet.")
+        except Exception as e:
+            logger.error(f"Failed for {theme['name']}: {e}")
+    return results
+
+
+def scrape_all(themes: list[dict]) -> list[tuple[dict, dict]]:
+    """Scrape top tweet for each theme. Returns list of (theme, tweet) pairs."""
+    return asyncio.run(_scrape_all_async(themes))
 
 
 def scrape(hour_utc: int) -> tuple[dict, dict]:
+    """Single-theme scrape for the given UTC hour (used by run_single mode)."""
     theme = get_theme_for_slot(hour_utc)
     logger.info(f"Theme for slot {hour_utc}: {theme['emoji']} {theme['name']}")
-
-    # Use dedicated search_term if set, otherwise fall back to theme name
-    search_term = theme.get("search_term") or theme["name"]
-
-    client = ApifyClient(os.environ["APIFY_API_TOKEN"])
-    viral_tweet = get_top_tweet_for_theme(client, theme["name"], search_term)
-
-    if viral_tweet is None:
+    results = scrape_all([theme])
+    if not results:
         raise ValueError(f"No usable tweet found for theme: {theme['name']}")
-
-    logger.info(
-        f"Selected tweet: @{viral_tweet['author']} | "
-        f"{viral_tweet['likes']:,} likes | {viral_tweet['views']:,} views"
-    )
-    return theme, viral_tweet
+    return results[0]

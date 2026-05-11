@@ -1,4 +1,4 @@
-apify-client
+twscrape
 groq
 resend
 requests

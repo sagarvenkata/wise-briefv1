@@ -38,28 +38,21 @@ def run_digest():
     themes = scraper.get_all_active_themes()
     logger.info(f"Found {len(themes)} active themes.")
 
-    client = scraper.ApifyClient(os.environ["APIFY_API_TOKEN"])
+    scraped = scraper.scrape_all(themes)
     results = []
 
-    for theme in themes:
+    for theme, tweet in scraped:
         logger.info(f"--- {theme['emoji']} {theme['name']} ---")
-        search_term = theme.get("search_term") or theme["name"]
-
         try:
-            tweet = scraper.get_top_tweet_for_theme(client, theme["name"], search_term)
-            if tweet is None:
-                logger.warning(f"No tweet found for {theme['name']} — skipping.")
-                continue
-
             content = summariser.summarise(theme, tweet)
             results.append({"theme": theme, "tweet": tweet, "content": content})
             logger.info(f"Done: {theme['name']}")
         except Exception as e:
-            logger.error(f"Failed for {theme['name']}: {e} — skipping.")
+            logger.error(f"Summarise failed for {theme['name']}: {e} — skipping.")
             continue
 
     if not results:
-        logger.error("No results to email — aborting.")
+        logger.error("No results at all — aborting.")
         sys.exit(1)
 
     logger.info(f"Pushing {len(results)} posts to Buffer queue ...")
