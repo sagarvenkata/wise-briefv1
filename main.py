@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 import summariser
-import poster
 import scraper
 import mailer
 import buffer_poster
@@ -73,6 +72,7 @@ def run_digest():
 
 def run_single():
     """Post one tweet for the current UTC hour's theme (original live-post mode)."""
+    import poster
     test_mode = "--test" in sys.argv
     hour_utc = datetime.now(timezone.utc).hour
 

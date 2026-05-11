@@ -2,6 +2,5 @@ apify-client
 groq
 resend
 requests
-tweepy
 supabase
 python-dotenv
