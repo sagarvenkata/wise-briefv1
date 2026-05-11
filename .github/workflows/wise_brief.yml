@@ -21,13 +21,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore twscrape session cache
-        uses: actions/cache@v4
-        with:
-          path: .twscrape
-          key: twscrape-${{ runner.os }}-v1
-          restore-keys: twscrape-${{ runner.os }}-
-
       - name: Run digest
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -37,10 +30,5 @@ jobs:
           DIGEST_TO_EMAIL: ${{ secrets.DIGEST_TO_EMAIL }}
           BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
           BUFFER_PROFILE_ID: ${{ secrets.BUFFER_PROFILE_ID }}
-          TWSCRAPE_USERNAME: ${{ secrets.TWSCRAPE_USERNAME }}
-          TWSCRAPE_PASSWORD: ${{ secrets.TWSCRAPE_PASSWORD }}
-          TWSCRAPE_EMAIL: ${{ secrets.TWSCRAPE_EMAIL }}
-          TWSCRAPE_EMAIL_PASSWORD: ${{ secrets.TWSCRAPE_EMAIL_PASSWORD }}
-          TWSCRAPE_AUTH_TOKEN: ${{ secrets.TWSCRAPE_AUTH_TOKEN }}
-          TWSCRAPE_CT0: ${{ secrets.TWSCRAPE_CT0 }}
+          TWITTERAPI_IO_KEY: ${{ secrets.TWITTERAPI_IO_KEY }}
         run: python main.py --digest
