@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 import requests
 from datetime import datetime, timezone, timedelta
@@ -77,10 +78,17 @@ def _to_dict(t: dict) -> dict:
 def _search(query: str) -> list[dict]:
     headers = {"X-API-Key": os.environ["TWITTERAPI_IO_KEY"]}
     params = {"query": query, "queryType": "Top"}
-    response = requests.get(SEARCH_URL, headers=headers, params=params, timeout=30)
+    for attempt in range(3):
+        response = requests.get(SEARCH_URL, headers=headers, params=params, timeout=30)
+        if response.status_code == 429:
+            wait = 10 * (attempt + 1)
+            logger.warning(f"Rate limited by twitterapi.io — waiting {wait}s before retry")
+            time.sleep(wait)
+            continue
+        response.raise_for_status()
+        return response.json().get("tweets", [])
     response.raise_for_status()
-    data = response.json()
-    return data.get("tweets", [])
+    return []
 
 
 def get_top_tweet_for_theme(theme_name: str, search_term: str) -> dict | None:
@@ -103,7 +111,12 @@ def get_top_tweet_for_theme(theme_name: str, search_term: str) -> dict | None:
             best = max(strict, key=_score)
             logger.info(f"[{theme_name}] STRICT — @{best.get('author', {}).get('userName', '')} — {best.get('public_metrics', {}).get('like_count', 0):,} likes")
         else:
-            best = max(tweets, key=lambda t: t.get("public_metrics", {}).get("like_count", 0))
+            # Fallback — must have at least some engagement
+            candidates = [t for t in tweets if t.get("public_metrics", {}).get("like_count", 0) >= 100]
+            if not candidates:
+                logger.warning(f"[{theme_name}] No tweet with 100+ likes — skipping.")
+                return None
+            best = max(candidates, key=lambda t: t.get("public_metrics", {}).get("like_count", 0))
             logger.info(f"[{theme_name}] FALLBACK — @{best.get('author', {}).get('userName', '')} — {best.get('public_metrics', {}).get('like_count', 0):,} likes")
 
         return _to_dict(best)
@@ -115,7 +128,9 @@ def get_top_tweet_for_theme(theme_name: str, search_term: str) -> dict | None:
 
 def scrape_all(themes: list[dict]) -> list[tuple[dict, dict]]:
     results = []
-    for theme in themes:
+    for i, theme in enumerate(themes):
+        if i > 0:
+            time.sleep(5)
         search_term = theme.get("search_term") or theme["name"]
         tweet = get_top_tweet_for_theme(theme["name"], search_term)
         if tweet:
