@@ -60,8 +60,14 @@ def run_digest():
         logger.error("No results at all — aborting.")
         sys.exit(1)
 
-    logger.info(f"Pushing {len(results)} posts to Buffer queue ...")
-    buffer_poster.queue_all(results)
+    if os.environ.get("BUFFER_ACCESS_TOKEN"):
+        logger.info(f"Pushing {len(results)} posts to Buffer queue ...")
+        try:
+            buffer_poster.queue_all(results)
+        except Exception as e:
+            logger.error(f"Buffer failed (non-fatal): {e} — continuing to email.")
+    else:
+        logger.info("BUFFER_ACCESS_TOKEN not set — skipping Buffer.")
 
     logger.info(f"Sending digest email with {len(results)}/{len(themes)} themes ...")
     mailer.send_digest(results)
